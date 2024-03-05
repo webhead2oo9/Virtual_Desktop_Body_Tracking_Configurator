@@ -1,10 +1,9 @@
-from PyQt6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget, QPushButton, QCheckBox, QGridLayout, QComboBox, QDoubleSpinBox, QTabWidget, QSpacerItem, QSizePolicy, QMessageBox
-from PyQt6.QtGui import QFont
-
+from PyQt6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget, QPushButton, QCheckBox, QGridLayout, QComboBox, QDoubleSpinBox, QTabWidget, QSpacerItem, QSizePolicy, QMessageBox, QStackedWidget
 import json
-from iobt_options import default_enabled, default_offsets, default_toggles, default_misc, temp_offsets
+from iobt_options import default_enabled, default_offsets, default_toggles, default_misc, temp_offsets, tooltips_enabled
 import psutil
 import winreg
+import qdarktheme
 
 
 
@@ -20,7 +19,7 @@ class MainWindow(QMainWindow):
             if "vrserver.exe" in proc.info['name'].lower():
                 dlg2 = QMessageBox()
                 dlg2.setWindowTitle("Virtual Desktop Body Tracking Configurator")            
-                dlg2.setText("Error!\nvrserver.exe running!\nPlease close SteamVR and try again")
+                dlg2.setText("Error!\n\nvrserver.exe running!\n\nPlease close SteamVR and try again")
                 
                 dlg2.exec()
                 
@@ -49,10 +48,12 @@ class MainWindow(QMainWindow):
         self.checkboxes = {}
         self.offsets = {}   
         self.misc = {}
+        self.stackedwidgets = {}
         
         
         layoutTab1 = QGridLayout()
         self.layoutTab2 = QGridLayout()
+        self.layoutTab2.setColumnMinimumWidth(1,150)
         layoutTab3 = QVBoxLayout()
 
 
@@ -116,18 +117,25 @@ class MainWindow(QMainWindow):
         self.load3.clicked.connect(self.load_settings_clicked)
         layoutTab3.addWidget(self.load3)
         
-        self.export = QPushButton("Export Settings (All Pages)")
+        self.export = QPushButton("Apply Settings (All Pages)")
+        self.export.setStyleSheet("QPushButton {background-color: rgb(0,200,0); color: black} QPushButton:hover {background-color: rgb(0,200,150)}")
         self.export.clicked.connect(self.export_clicked)
         layoutTab1.addWidget(self.export, 17, 2)
         
-        self.export2 = QPushButton("Export Settings (All Pages)")
+        self.export2 = QPushButton("Apply Settings (All Pages)")
+        self.export2.setStyleSheet("QPushButton {background-color: rgb(0,200,0); color: black} QPushButton:hover {background-color: rgb(0,200,150)}")
         self.export2.clicked.connect(self.export_clicked)
         self.layoutTab2.addWidget(self.export2, 5, 0)
         
-        self.export3 = QPushButton("Export Settings (All Pages)")
+        self.export3 = QPushButton("Apply Settings (All Pages)")
+        self.export3.setStyleSheet("QPushButton {background-color: rgb(0,200,0); color: black} QPushButton:hover {background-color: rgb(0,200,150)}")
         self.export3.clicked.connect(self.export_clicked)
         layoutTab3.addWidget(self.export3, 10)
         
+        self.loadRecommended = QCheckBox("Apply Recommended Offsets\n(Does not override custom offsets)")
+        self.loadRecommended.setChecked(True)
+        self.loadRecommended.clicked.connect(self.checkbox_interacted)
+        self.layoutTab2.addWidget(self.loadRecommended, 3, 0)
         
         first = 0
         row = 3
@@ -136,6 +144,7 @@ class MainWindow(QMainWindow):
             button = QCheckBox(variable[:-8].replace("_", " ").title())
             button.setCheckable(True)
             button.setChecked(default_enabled.get(variable))
+            button.setToolTip(tooltips_enabled[variable])
             button.clicked.connect(lambda checked, b=button: self.checkbox_interacted(b))
             
             self.checkboxes[variable] = button
@@ -154,9 +163,12 @@ class MainWindow(QMainWindow):
             
         self.dropdown = QComboBox()
             
+        for axis in ["Translate X", "Translate Y", "Translate Z", "Rotate X", "Rotate Y", "Rotate Z"]:
+            self.stackedwidgets[axis] = QStackedWidget()
+
         row = 0
         column = 0
-        for variable in default_enabled: 
+        for variable in default_enabled:        
 
             self.dropdown.addItem(variable[:-8].replace("_", " ").title())
             
@@ -182,7 +194,7 @@ class MainWindow(QMainWindow):
                 
                 
                 self.offsets[variable][axis] = box
-                
+                self.stackedwidgets[axis].addWidget(box)
                 #layoutTab2.addWidget(box, row, column)
 
                 row += 1
@@ -190,14 +202,13 @@ class MainWindow(QMainWindow):
                 if row >= 9:
                     row = 0
                     column += 1
+
+
+        self.layoutTab2.addWidget(self.dropdown, 2, 0)
         
-
-
-
-        self.layoutTab2.addWidget(self.dropdown, 3, 0)
         i=1
         for axis in ["Translate X", "Translate Y", "Translate Z", "Rotate X", "Rotate Y", "Rotate Z"]:
-            self.layoutTab2.addWidget(self.offsets[list(default_enabled.keys())[0]][axis],i,2   )
+            self.layoutTab2.addWidget(self.stackedwidgets[axis], i, 2)
             i+=1
         self.dropdown.currentIndexChanged.connect(self.offset_index_changed)
 
@@ -213,23 +224,16 @@ class MainWindow(QMainWindow):
 
         tabs.addTab(widgetTab1, "Enabled Trackers")
         tabs.addTab(widgetTab2, "Tracker Offsets")
-        tabs.setTabEnabled(1, False)
         tabs.addTab(widgetTab3, "Miscellaneous")
 
         self.setCentralWidget(tabs)
-        
-        
-        
+          
     def offset_index_changed(self, index):
         i=1
         for axis in ["Translate X", "Translate Y", "Translate Z", "Rotate X", "Rotate Y", "Rotate Z"]:
-            self.layoutTab2.addWidget(self.offsets[list(default_enabled.keys())[index]][axis],i,2)
+            self.stackedwidgets[axis].setCurrentIndex(index)
             i+=1
-        
-        
-        #print(index)
-    
-        
+                
     def checkbox_interacted(self, checkbox):
         ()
         #print(f"{checkbox.text()} is {checkbox.isChecked()}")
@@ -315,12 +319,26 @@ class MainWindow(QMainWindow):
 
         
     def export_clicked(self):
+
+        for proc in psutil.process_iter(['name']):
+            if "vrserver.exe" in proc.info['name'].lower():
+                dlg2 = QMessageBox()
+                dlg2.setWindowTitle("Virtual Desktop Body Tracking Configurator")            
+                dlg2.setText("Error!\n\nvrserver.exe running!\n\nPlease close SteamVR and try again")
+                
+                dlg2.exec()
+                
+                if QMessageBox.StandardButton.Ok:
+                    exit()
+        
+
         #print("Export clicked")
         export_dict = {}
 
-        for variable in temp_offsets:
-            export_dict[variable] = temp_offsets[variable]
-        
+        if self.loadRecommended.isChecked():
+            for variable in temp_offsets:
+                export_dict[variable] = temp_offsets[variable]
+                
         for variable, checkbox in self.checkboxes.items():
            if default_enabled[variable] != checkbox.isChecked():
                 export_dict[variable] = checkbox.isChecked()
@@ -389,7 +407,7 @@ class MainWindow(QMainWindow):
                 
                 dlg = QMessageBox(self)
                 dlg.setWindowTitle("Virtual Desktop Body Tracking Configurator")            
-                dlg.setText(f"Successfully exported to SteamVR!\nApplied recommended tracker offsets\nBackup of original is saved at: {self.steam}/config/steamvr.vrsettings.originalbackup\nAnd backup of previous settings is saved at: {self.steam}/config/steamvr.vrsettings.lastbackup")
+                dlg.setText(f"Successfully exported to SteamVR!\n\nBackup of original is saved at: {self.steam}/config/steamvr.vrsettings.originalbackup\n\nAnd backup of previous settings is saved at: {self.steam}/config/steamvr.vrsettings.lastbackup")
                 
                 dlg.exec()
                 
@@ -408,6 +426,8 @@ class MainWindow(QMainWindow):
             
 
 app = QApplication([])
+
+qdarktheme.setup_theme(additional_qss="QToolTip { border: 0px; }")
 
 window = MainWindow()
 window.show()
